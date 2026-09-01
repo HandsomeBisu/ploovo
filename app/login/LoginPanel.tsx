@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { signInWithGoogle } from "./actions";
 
 type Role = "teacher" | "student";
@@ -76,16 +76,52 @@ function BackButton({ onClick }: { onClick: () => void }) {
 type LoginPanelProps = {
   initialRole: Role | null;
   initialPin: string;
+  authError: string;
 };
 
-export default function LoginPanel({ initialRole, initialPin }: LoginPanelProps) {
+function getAuthErrorMessage(error: string) {
+  if (!error) {
+    return "";
+  }
+
+  if (error === "AccessDenied") {
+    return "로그인이 취소되었거나 접근 권한을 받을 수 없었습니다.";
+  }
+
+  if (error === "OAuthAccountNotLinked") {
+    return "이미 다른 방식으로 가입된 이메일입니다. 기존 로그인 방식을 사용해 주세요.";
+  }
+
+  if (error === "Configuration") {
+    return "로그인 설정을 확인해야 합니다. 잠시 후 다시 시도해 주세요.";
+  }
+
+  return "로그인을 완료하지 못했습니다. 다시 시도해 주세요.";
+}
+
+export default function LoginPanel({ initialRole, initialPin, authError }: LoginPanelProps) {
   const [role, setRole] = useState<Role | null>(initialRole);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(() => getAuthErrorMessage(authError));
+  const hasError = Boolean(errorMessage);
+  const loadingMessage = useMemo(() => "Google 로그인으로 이동하는 중입니다.", []);
+
+  function resetRole() {
+    setErrorMessage("");
+    setRole(null);
+  }
+
+  function startGoogleSignIn() {
+    setErrorMessage("");
+    setIsSigningIn(true);
+  }
 
   if (role === "teacher") {
     return (
-      <section className="login-shell" aria-labelledby="login-title">
-        <div className="login-card">
-          <BackButton onClick={() => setRole(null)} />
+      <>
+        <section className="login-shell" aria-labelledby="login-title" aria-busy={isSigningIn}>
+          <div className={`login-card${isSigningIn ? " is-muted" : ""}`}>
+          <BackButton onClick={resetRole} />
           <p className="login-kicker">선생님 계정</p>
           <h1 id="login-title">로그인 또는 회원가입</h1>
           <p className="login-note">퀴즈 만들기와 수업 기록 확인에 사용됩니다.</p>
@@ -93,8 +129,8 @@ export default function LoginPanel({ initialRole, initialPin }: LoginPanelProps)
           <div className="provider-list" aria-label="소셜 로그인">
             {loginProviders.map((provider) => (
               provider.name === "Google" ? (
-                <form action={signInWithGoogle} key={provider.name}>
-                  <button className={`provider-button ${provider.className}`} type="submit">
+                <form action={signInWithGoogle} key={provider.name} onSubmit={startGoogleSignIn}>
+                  <button className={`provider-button ${provider.className}`} type="submit" disabled={isSigningIn}>
                     <ProviderLogo type={provider.mark} />
                     {provider.label}
                   </button>
@@ -129,6 +165,24 @@ export default function LoginPanel({ initialRole, initialPin }: LoginPanelProps)
           </form>
         </div>
       </section>
+        {isSigningIn ? (
+          <div className="login-loading-overlay" role="status" aria-live="polite">
+            <div className="login-spinner" aria-hidden="true" />
+            <p>{loadingMessage}</p>
+          </div>
+        ) : null}
+        {hasError ? (
+          <div className="login-error-backdrop" role="presentation">
+            <div className="login-error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="login-error-title">
+              <strong id="login-error-title">로그인에 실패했습니다</strong>
+              <p>{errorMessage}</p>
+              <button type="button" onClick={() => setErrorMessage("")}>
+                확인
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </>
     );
   }
 
@@ -136,7 +190,7 @@ export default function LoginPanel({ initialRole, initialPin }: LoginPanelProps)
     return (
       <section className="login-shell" aria-labelledby="student-title">
         <div className="login-card student-card">
-          <BackButton onClick={() => setRole(null)} />
+          <BackButton onClick={resetRole} />
           <p className="login-kicker">학생 참여</p>
           <h1 id="student-title">게임 PIN으로 들어가기</h1>
           <p className="login-note">선생님이 알려준 PIN을 입력하면 바로 참여할 수 있습니다.</p>

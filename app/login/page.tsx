@@ -11,6 +11,7 @@ type LoginPageProps = {
   searchParams?: Promise<{
     role?: string | string[];
     pin?: string | string[];
+    error?: string | string[];
   }>;
 };
 
@@ -22,6 +23,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const role = getParam(params?.role);
   const pin = getParam(params?.pin);
+  const error = getParam(params?.error);
   const initialRole = role === "student" || role === "teacher" ? role : pin ? "student" : null;
 
   return (
@@ -32,7 +34,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </Link>
       </header>
 
-      <LoginPanel initialRole={initialRole} initialPin={pin} />
+      <LoginPanel initialRole={initialRole} initialPin={pin} authError={error} />
 
       <footer className="login-footer">
         <Link href="#">이용약관</Link>
