@@ -50,8 +50,8 @@ export default async function QuizSetDetailPage({
             <p className="dashboard-kicker">QUIZ SET</p>
             <h1 id="set-title">{set.title}</h1>
           </div>
-          <Link className="dashboard-title-action is-quiet" href="/dashboard">
-            목록
+          <Link className="dashboard-title-action" href={`/dashboard/sets/${id}/edit`}>
+            문제 편집
           </Link>
         </div>
 

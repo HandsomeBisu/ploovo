@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { auth } from "@/auth";
 import LoginPanel from "./LoginPanel";
 
 export const metadata: Metadata = {
@@ -24,6 +26,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const role = getParam(params?.role);
   const pin = getParam(params?.pin);
   const error = getParam(params?.error);
+
+  if (!error && role !== "student") {
+    const session = await auth();
+
+    if (session?.user) {
+      redirect("/dashboard");
+    }
+  }
+
   const initialRole = role === "student" || role === "teacher" ? role : pin ? "student" : null;
 
   return (

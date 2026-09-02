@@ -91,7 +91,7 @@ export default async function DashboardPage() {
                 <p>{set.description || "설명이 아직 없어요."}</p>
                 <div className="set-card-bottom">
                   <span>{set._count.gameRooms}번 진행</span>
-                  <Link href={`/dashboard/sets/${set.id}`}>열기</Link>
+                  <Link href={`/dashboard/sets/${set.id}/edit`}>편집</Link>
                 </div>
               </article>
             ))}
