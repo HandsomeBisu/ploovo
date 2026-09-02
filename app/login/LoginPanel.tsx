@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { signInWithGoogle } from "./actions";
 
 type Role = "teacher" | "student";
@@ -104,7 +104,6 @@ export default function LoginPanel({ initialRole, initialPin, authError }: Login
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState(() => getAuthErrorMessage(authError));
   const hasError = Boolean(errorMessage);
-  const loadingMessage = useMemo(() => "Google 로그인으로 이동하는 중입니다.", []);
 
   function resetRole() {
     setErrorMessage("");
@@ -166,9 +165,8 @@ export default function LoginPanel({ initialRole, initialPin, authError }: Login
         </div>
       </section>
         {isSigningIn ? (
-          <div className="login-loading-overlay" role="status" aria-live="polite">
+          <div className="login-loading-overlay" role="status" aria-label="로그인 중">
             <div className="login-spinner" aria-hidden="true" />
-            <p>{loadingMessage}</p>
           </div>
         ) : null}
         {hasError ? (
