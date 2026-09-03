@@ -71,7 +71,7 @@ export default async function QuizSetDetailPage({
               ))}
             </ul>
           ) : (
-            <p>아직 문항이 없어요. 다음 단계에서 문항 편집 화면을 연결하면 됩니다.</p>
+            <p>아직 문제가 없어요. 문제 편집에서 첫 문제를 추가해 보세요.</p>
           )}
         </article>
       </section>
