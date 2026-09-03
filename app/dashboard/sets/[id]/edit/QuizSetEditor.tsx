@@ -77,7 +77,6 @@ export function QuizSetEditor({
   const saveTimers = useRef(new Map<string, number>());
   const saveVersions = useRef(new Map<string, number>());
   const dirtyIds = useRef(new Set<string>());
-  const undoTimer = useRef<number | null>(null);
   const choiceInputs = useRef<Array<HTMLInputElement | null>>([]);
 
   const activeQuestion = questions.find((question) => question.id === activeId) ?? null;
@@ -89,11 +88,21 @@ export function QuizSetEditor({
 
     return () => {
       timers.forEach((timer) => window.clearTimeout(timer));
-      if (undoTimer.current) {
-        window.clearTimeout(undoTimer.current);
-      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!notice && !undoItem) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setNotice(null);
+      setUndoItem(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timer);
+  }, [notice, undoItem]);
 
   useEffect(() => {
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
@@ -236,20 +245,11 @@ export function QuizSetEditor({
     setActiveId(remaining[Math.min(index, remaining.length - 1)]?.id ?? null);
     setUndoItem({ question: result.question, index });
     setNotice({ message: "문제를 삭제했어요." });
-
-    if (undoTimer.current) {
-      window.clearTimeout(undoTimer.current);
-    }
-    undoTimer.current = window.setTimeout(() => setUndoItem(null), 7000);
   }
 
   async function undoDelete() {
     if (!undoItem) {
       return;
-    }
-
-    if (undoTimer.current) {
-      window.clearTimeout(undoTimer.current);
     }
 
     setBusyAction("undo");

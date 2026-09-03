@@ -1,5 +1,8 @@
 .editorPage {
-  width: min(100%, 1380px);
+  display: flex;
+  width: 100%;
+  min-height: calc(100vh - 36px);
+  flex-direction: column;
   margin: 0 auto;
   color: #1d222b;
   animation: editorIn 300ms ease-out both;
@@ -160,6 +163,7 @@
 
 .editorWorkspace {
   display: grid;
+  flex: 1;
   min-height: 620px;
   grid-template-columns: 230px minmax(390px, 1fr) minmax(270px, 320px);
   margin-top: 18px;

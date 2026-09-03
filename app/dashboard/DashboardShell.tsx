@@ -11,6 +11,8 @@ import {
   Heart,
   LogOut,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Settings,
   UsersRound,
@@ -30,6 +32,7 @@ type DashboardShellProps = {
   children: ReactNode;
   current: DashboardSection;
   displayName: string;
+  mode?: "default" | "editor";
 };
 
 const primaryNavItems = [
@@ -50,26 +53,53 @@ async function signOutAction() {
   await signOut({ redirectTo: "/" });
 }
 
-export function DashboardShell({ children, current, displayName }: DashboardShellProps) {
+export function DashboardShell({
+  children,
+  current,
+  displayName,
+  mode = "default",
+}: DashboardShellProps) {
   const shortName = displayName.length > 14 ? `${displayName.slice(0, 14)}...` : displayName;
   const initial = shortName.slice(0, 1).toUpperCase();
+  const isEditor = mode === "editor";
 
   return (
-    <main className="teacher-dashboard">
+    <main className={`teacher-dashboard${isEditor ? " dashboard-editor-shell" : ""}`}>
       <aside className="dashboard-sidebar" aria-label="선생님 메뉴">
-        <Brand />
+        {isEditor ? (
+          <input
+            aria-label="사이드바 접기 또는 펼치기"
+            className="sidebar-toggle-input"
+            id="editor-sidebar-toggle"
+            type="checkbox"
+          />
+        ) : null}
 
-        <Link className="sidebar-create" href="/dashboard/sets/new">
+        <div className="dashboard-brand-row">
+          <Brand />
+          {isEditor ? (
+            <label
+              className="sidebar-collapse-button"
+              htmlFor="editor-sidebar-toggle"
+              title="사이드바 접기 또는 펼치기"
+            >
+              <PanelLeftClose aria-hidden="true" className="sidebar-collapse-icon" />
+              <PanelLeftOpen aria-hidden="true" className="sidebar-expand-icon" />
+            </label>
+          ) : null}
+        </div>
+
+        <Link className="sidebar-create" href="/dashboard/sets/new" title="새 문제 세트">
           <Plus aria-hidden="true" />
-          새 문제 세트
+          <span>새 문제 세트</span>
         </Link>
 
         <DashboardNav current={current} />
 
         <div className="sidebar-support">
-          <Link href="/dashboard/settings">
+          <Link href="/dashboard/settings" title="설정">
             <Settings aria-hidden="true" />
-            설정
+            <span>설정</span>
           </Link>
         </div>
 
@@ -86,7 +116,7 @@ export function DashboardShell({ children, current, displayName }: DashboardShel
             <div className="dashboard-mobile-popover">
               <Link className="sidebar-create" href="/dashboard/sets/new">
                 <Plus aria-hidden="true" />
-                새 문제 세트
+                <span>새 문제 세트</span>
               </Link>
               <DashboardNav current={current} />
               <AccountMenu displayName={shortName} initial={initial} />
@@ -103,7 +133,7 @@ function Brand() {
   return (
     <Link href="/dashboard" className="dashboard-brand" aria-label="Ploovo 대시보드">
       <span aria-hidden="true">P</span>
-      Ploovo!
+      <strong>Ploovo!</strong>
     </Link>
   );
 }
@@ -121,9 +151,10 @@ function DashboardNav({ current }: { current: DashboardSection }) {
             className={current === item.id ? "is-active" : undefined}
             href={item.href}
             key={item.id}
+            title={item.label}
           >
             <Icon aria-hidden="true" />
-            {item.label}
+            <span>{item.label}</span>
           </Link>
         );
       })}
@@ -138,9 +169,10 @@ function DashboardNav({ current }: { current: DashboardSection }) {
             className={current === item.id ? "is-active" : undefined}
             href={item.href}
             key={item.id}
+            title={item.label}
           >
             <Icon aria-hidden="true" />
-            {item.label}
+            <span>{item.label}</span>
           </Link>
         );
       })}

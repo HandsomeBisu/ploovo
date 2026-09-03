@@ -33,7 +33,7 @@ export default async function EditQuizSetPage({ params }: { params: Promise<{ id
   const displayName = session.user.name ?? session.user.email ?? "선생님";
 
   return (
-    <DashboardShell displayName={displayName} current="sets">
+    <DashboardShell displayName={displayName} current="sets" mode="editor">
       <QuizSetEditor
         description={set.description}
         initialQuestions={set.questions.map(parseQuestionRecord)}

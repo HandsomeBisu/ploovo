@@ -1336,6 +1336,60 @@ input {
   text-shadow: none;
 }
 
+.dashboard-brand strong {
+  font: inherit;
+}
+
+.dashboard-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sidebar-toggle-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.sidebar-collapse-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 7px;
+  background: #ffffff;
+  color: #7b8491;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.sidebar-collapse-button:hover {
+  border-color: #cbd3df;
+  background: var(--dashboard-hover);
+  color: #20252e;
+  transform: translateY(-1px);
+}
+
+.dashboard-sidebar:has(.sidebar-toggle-input:focus-visible) .sidebar-collapse-button {
+  outline: 3px solid rgb(47 124 244 / 22%);
+  outline-offset: 2px;
+}
+
+.sidebar-expand-icon {
+  display: none;
+}
+
 .sidebar-create,
 .dashboard-title-action,
 .button,
@@ -2616,6 +2670,86 @@ input {
   min-width: 0;
   background: var(--dashboard-bg);
   padding: 46px 42px 72px;
+}
+
+@media (min-width: 821px) {
+  .dashboard-editor-shell {
+    transition: grid-template-columns 220ms ease;
+  }
+
+  .dashboard-editor-shell .dashboard-sidebar {
+    transition: padding 220ms ease;
+  }
+
+  .dashboard-editor-shell .dashboard-main {
+    padding: 18px 20px 20px;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .dashboard-sidebar {
+    padding-inline: 10px;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .dashboard-brand-row {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 12px;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .dashboard-brand strong,
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-create span,
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-nav > p,
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-nav a span,
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-support a span,
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .dashboard-account-copy,
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .account-chevron {
+    display: none;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-collapse-icon {
+    display: none;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-expand-icon {
+    display: block;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-create {
+    width: 44px;
+    margin-top: 18px;
+    align-self: center;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-nav {
+    margin-top: 20px;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-nav a,
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-support a {
+    width: 44px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .sidebar-nav a:hover {
+    transform: none;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .dashboard-account-menu > summary {
+    grid-template-columns: 36px;
+    justify-content: center;
+    padding-inline: 4px;
+  }
+
+  .dashboard-editor-shell:has(.sidebar-toggle-input:checked) .dashboard-account-popover {
+    right: auto;
+    bottom: 0;
+    left: 52px;
+    width: 190px;
+  }
 }
 
 .dashboard-mobile-header {
