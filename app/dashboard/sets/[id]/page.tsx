@@ -1,13 +1,18 @@
 import Link from "next/link";
+import { ArrowLeft, Check, ChevronDown, FilePenLine } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { DashboardShell } from "../../DashboardShell";
+import { parseQuestionRecord } from "@/lib/question-editor";
+import { DeleteQuizSetDialog } from "../../DeleteQuizSetDialog";
+import { SavedSetToast } from "../../SavedSetToast";
 
 export default async function QuizSetDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ saved?: string }>;
 }) {
   const session = await auth();
 
@@ -27,8 +32,14 @@ export default async function QuizSetDetailPage({
       updatedAt: true,
       questions: {
         orderBy: { order: "asc" },
-        select: { id: true, prompt: true },
-        take: 5,
+        select: {
+          id: true,
+          quizSetId: true,
+          prompt: true,
+          choices: true,
+          answer: true,
+          order: true,
+        },
       },
       _count: {
         select: { questions: true, gameRooms: true },
@@ -40,19 +51,27 @@ export default async function QuizSetDetailPage({
     notFound();
   }
 
-  const displayName = session.user.name ?? session.user.email ?? "선생님";
+  const { saved } = await searchParams;
+  const questions = set.questions.map(parseQuestionRecord);
 
   return (
-    <DashboardShell displayName={displayName} current="sets">
       <section className="dashboard-content" aria-labelledby="set-title">
+        <Link className="set-detail-back" href="/dashboard">
+          <ArrowLeft aria-hidden="true" />
+          내 문제 세트
+        </Link>
         <div className="dashboard-title-row">
           <div>
             <p className="dashboard-kicker">QUIZ SET</p>
             <h1 id="set-title">{set.title}</h1>
           </div>
-          <Link className="dashboard-title-action" href={`/dashboard/sets/${id}/edit`}>
-            문제 편집
-          </Link>
+          <div className="set-detail-actions">
+            <Link className="dashboard-title-action" href={`/dashboard/sets/${id}/edit`}>
+              <FilePenLine aria-hidden="true" />
+              문제 편집
+            </Link>
+            <DeleteQuizSetDialog quizSetId={id} title={set.title} />
+          </div>
         </div>
 
         <article className="set-detail-panel">
@@ -64,17 +83,54 @@ export default async function QuizSetDetailPage({
             <span>{set.updatedAt.toLocaleDateString("ko-KR")} 수정</span>
           </div>
 
-          {set.questions.length > 0 ? (
+          {questions.length > 0 ? (
             <ul className="question-preview-list" aria-label="문항 미리보기">
-              {set.questions.map((question) => (
-                <li key={question.id}>{question.prompt}</li>
+              {questions.map((question, index) => (
+                <li key={question.id}>
+                  <details className="question-preview-item">
+                    <summary>
+                      <span>{index + 1}</span>
+                      <strong>{question.prompt || "내용이 없는 문제"}</strong>
+                      <small>{questionTypeLabel(question.type)}</small>
+                      <ChevronDown aria-hidden="true" />
+                    </summary>
+                    <div className="question-preview-content">
+                      {question.type === "short-answer" ? (
+                        <>
+                          <p>{question.shortAnswerMatch === "exact" ? "학생 답이 아래 정답과 완전히 일치해야 합니다." : "학생 답에 아래 정답 중 하나가 포함되어야 합니다."}</p>
+                          <div className="question-answer-tags">
+                            {question.answerTexts.map((answer, answerIndex) => (
+                              <span key={answerIndex}>{answer || "입력되지 않은 정답"}</span>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <ol>
+                          {question.choices.map((choice, choiceIndex) => (
+                            <li className={question.answerIndices.includes(choiceIndex) ? "is-correct" : undefined} key={choiceIndex}>
+                              <span>{question.type === "true-false" ? choice : String.fromCharCode(65 + choiceIndex)}</span>
+                              <strong>{choice || "입력되지 않은 보기"}</strong>
+                              {question.answerIndices.includes(choiceIndex) ? <Check aria-label="정답" /> : null}
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </div>
+                  </details>
+                </li>
               ))}
             </ul>
           ) : (
             <p>아직 문제가 없어요. 문제 편집에서 첫 문제를 추가해 보세요.</p>
           )}
         </article>
+        <SavedSetToast show={saved === "1"} />
       </section>
-    </DashboardShell>
   );
+}
+
+function questionTypeLabel(type: "multiple-choice" | "true-false" | "short-answer") {
+  if (type === "true-false") return "OX";
+  if (type === "short-answer") return "단답형";
+  return "객관식";
 }

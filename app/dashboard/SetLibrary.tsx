@@ -14,6 +14,7 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { DeleteQuizSetDialog } from "./DeleteQuizSetDialog";
 
 type DashboardSet = {
   id: string;
@@ -28,16 +29,17 @@ type DashboardSet = {
 type SortOption = "recent" | "title" | "questions";
 
 export function SetLibrary({ sets }: { sets: DashboardSet[] }) {
+  const [librarySets, setLibrarySets] = useState(sets);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortOption>("recent");
 
   const visibleSets = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
     const filtered = normalizedQuery
-      ? sets.filter((set) =>
+      ? librarySets.filter((set) =>
           `${set.title} ${set.description ?? ""}`.toLocaleLowerCase("ko-KR").includes(normalizedQuery),
         )
-      : sets;
+      : librarySets;
 
     return [...filtered].sort((a, b) => {
       if (sort === "title") {
@@ -50,16 +52,16 @@ export function SetLibrary({ sets }: { sets: DashboardSet[] }) {
 
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
-  }, [query, sets, sort]);
+  }, [librarySets, query, sort]);
 
-  const totalQuestions = sets.reduce((sum, set) => sum + set.questionCount, 0);
-  const totalPlays = sets.reduce((sum, set) => sum + set.playCount, 0);
+  const totalQuestions = librarySets.reduce((sum, set) => sum + set.questionCount, 0);
+  const totalPlays = librarySets.reduce((sum, set) => sum + set.playCount, 0);
 
   return (
     <div className="set-library">
       <div className="library-summary" aria-label="문제 세트 요약">
         <span>
-          <strong>{sets.length}</strong>개 세트
+          <strong>{librarySets.length}</strong>개 세트
         </span>
         <span>
           <strong>{totalQuestions}</strong>개 문제
@@ -69,7 +71,7 @@ export function SetLibrary({ sets }: { sets: DashboardSet[] }) {
         </span>
       </div>
 
-      {sets.length === 0 ? (
+      {librarySets.length === 0 ? (
         <EmptyLibrary />
       ) : (
         <>
@@ -156,6 +158,12 @@ export function SetLibrary({ sets }: { sets: DashboardSet[] }) {
                           <BookOpenCheck aria-hidden="true" />
                           세트 정보
                         </Link>
+                        <DeleteQuizSetDialog
+                          compact
+                          onDeleted={() => setLibrarySets((current) => current.filter((item) => item.id !== set.id))}
+                          quizSetId={set.id}
+                          title={set.title}
+                        />
                       </div>
                     </details>
                   </div>

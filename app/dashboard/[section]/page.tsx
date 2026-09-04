@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { DashboardShell } from "../DashboardShell";
 
 const sectionCopy = {
   discover: {
@@ -60,10 +59,7 @@ export default async function DashboardSectionPage({
     notFound();
   }
 
-  const displayName = session.user.name ?? session.user.email ?? "선생님";
-
   return (
-    <DashboardShell displayName={displayName} current={copy.current}>
       <section className="dashboard-content" aria-labelledby="section-title">
         <div className="dashboard-title-row">
           <div>
@@ -82,6 +78,5 @@ export default async function DashboardSectionPage({
           </article>
         </div>
       </section>
-    </DashboardShell>
   );
 }

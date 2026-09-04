@@ -1,6 +1,7 @@
 export const questionTypes = ["multiple-choice", "true-false", "short-answer"] as const;
 
 export type QuestionType = (typeof questionTypes)[number];
+export type ShortAnswerMatch = "exact" | "contains";
 
 export type EditorQuestion = {
   id: string;
@@ -8,8 +9,9 @@ export type EditorQuestion = {
   prompt: string;
   type: QuestionType;
   choices: string[];
-  answerIndex: number;
-  answerText: string;
+  answerIndices: number[];
+  answerTexts: string[];
+  shortAnswerMatch: ShortAnswerMatch;
   order: number;
 };
 
@@ -49,7 +51,18 @@ export function parseQuestionRecord(record: {
     choices = [];
   }
 
-  const answerIndex = Number(answer.index);
+  const legacyAnswerIndex = Number(answer.index);
+  const answerIndices = Array.isArray(answer.indices)
+    ? [...new Set(answer.indices.map(Number).filter(Number.isInteger))]
+    : Number.isInteger(legacyAnswerIndex)
+      ? [legacyAnswerIndex]
+      : [];
+  const answerTexts = Array.isArray(answer.texts)
+    ? answer.texts.map(String).slice(0, 5)
+    : typeof answer.text === "string"
+      ? [answer.text]
+      : [""];
+  const shortAnswerMatch: ShortAnswerMatch = answer.match === "contains" ? "contains" : "exact";
 
   return {
     id: record.id,
@@ -57,8 +70,9 @@ export function parseQuestionRecord(record: {
     prompt: record.prompt,
     type,
     choices,
-    answerIndex: Number.isInteger(answerIndex) ? answerIndex : 0,
-    answerText: typeof answer.text === "string" ? answer.text : "",
+    answerIndices,
+    answerTexts,
+    shortAnswerMatch,
     order: record.order,
   };
 }
@@ -83,20 +97,36 @@ export function validateQuestion(question: EditorQuestion): QuestionIssue[] {
     }
 
     if (
-      !Number.isInteger(question.answerIndex) ||
-      question.answerIndex < 0 ||
-      question.answerIndex >= question.choices.length
+      question.answerIndices.length === 0 ||
+      question.answerIndices.some(
+        (index) => !Number.isInteger(index) || index < 0 || index >= question.choices.length,
+      )
     ) {
-      issues.push({ code: "answer", message: "정답 보기를 선택해 주세요." });
+      issues.push({ code: "answer", message: "정답 보기를 하나 이상 선택해 주세요." });
     }
   }
 
-  if (question.type === "true-false" && ![0, 1].includes(question.answerIndex)) {
+  if (
+    question.type === "true-false" &&
+    (question.answerIndices.length !== 1 || ![0, 1].includes(question.answerIndices[0]))
+  ) {
     issues.push({ code: "answer", message: "O 또는 X를 정답으로 선택해 주세요." });
   }
 
-  if (question.type === "short-answer" && !question.answerText.trim()) {
-    issues.push({ code: "answer", message: "단답형 정답을 입력해 주세요." });
+  if (
+    question.type === "short-answer" &&
+    (question.answerTexts.length === 0 || question.answerTexts.some((answer) => !answer.trim()))
+  ) {
+    issues.push({ code: "answer", message: "추가한 단답형 정답을 모두 입력해 주세요." });
+  }
+
+  if (question.type === "short-answer") {
+    const normalizedAnswers = question.answerTexts.map((answer) =>
+      answer.trim().toLocaleLowerCase("ko-KR"),
+    );
+    if (new Set(normalizedAnswers).size !== normalizedAnswers.length) {
+      issues.push({ code: "duplicate", message: "같은 단답형 정답이 두 번 들어가 있어요." });
+    }
   }
 
   return issues;
@@ -104,6 +134,20 @@ export function validateQuestion(question: EditorQuestion): QuestionIssue[] {
 
 export function isQuestionComplete(question: EditorQuestion) {
   return validateQuestion(question).length === 0;
+}
+
+export function isShortAnswerCorrect(question: EditorQuestion, response: string) {
+  if (question.type !== "short-answer") return false;
+  const normalizedResponse = response.trim().toLocaleLowerCase("ko-KR");
+  if (!normalizedResponse) return false;
+
+  return question.answerTexts.some((answer) => {
+    const normalizedAnswer = answer.trim().toLocaleLowerCase("ko-KR");
+    if (!normalizedAnswer) return false;
+    return question.shortAnswerMatch === "contains"
+      ? normalizedResponse.includes(normalizedAnswer)
+      : normalizedResponse === normalizedAnswer;
+  });
 }
 
 function getAnswerObject(value: unknown): Record<string, unknown> {

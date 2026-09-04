@@ -36,7 +36,8 @@ Korean UI copy should sound natural, short, and written by a real person.
 - Logged-in teachers who revisit `/login` are redirected to `/dashboard`
 - Next.js 16 `proxy.ts` protects `/dashboard/:path*`
 - The teacher dashboard uses a compact Gimkit-inspired working layout:
-  - Fixed desktop sidebar and mobile menu
+  - Persistent desktop sidebar and mobile menu
+  - Route loading skeletons replace only the right-hand content area
   - Real quiz sets loaded from Prisma for the signed-in teacher
   - Set totals for set, question, and game counts
   - Client-side set search and sorting
@@ -45,10 +46,14 @@ Korean UI copy should sound natural, short, and written by a real person.
   - Short entrance, hover, menu, and loading animations with reduced-motion support
 - Teachers can create a quiz set at `/dashboard/sets/new`
 - Creating a set redirects directly to `/dashboard/sets/[id]/edit`
+- Quiz set creation and editing use a full-width focus mode; the dashboard sidebar slides out while entering those routes
 - Quiz set detail pages exist at `/dashboard/sets/[id]`
+  - Clicking a question title expands its choices or accepted short answers
+  - Saving from the editor shows a three-second completion toast on the detail page
+  - Quiz sets can be permanently deleted after typing the exact set name in a warning dialog
 - The question editor is implemented as a focused three-pane workspace:
   - Full-width editing mode that fills the available viewport
-  - Collapsible desktop dashboard sidebar on editor routes
+  - No dashboard sidebar while creating or editing a set
   - Question navigator on the left
   - One selected question editor in the center
   - Live student-view preview on the right
@@ -60,15 +65,22 @@ Korean UI copy should sound natural, short, and written by a real person.
   - True/false (`O`/`X`)
   - Short answer
 - Multiple-choice questions support two to six choices, correct-answer selection, choice insertion/removal/reordering, character counts, Enter navigation, and multi-line paste
+- Multiple-choice questions support more than one correct answer
+- Short-answer questions support up to five accepted answers and exact-match or contains-match grading
 - Question validation covers missing prompts, missing choices, duplicate choices, and missing answers
 - Question management supports:
   - Adding a question after the currently selected question
   - Drag-and-drop ordering with accessible up/down controls
-  - Duplication
-  - Immediate deletion with a three-second undo action
+  - Shift-click range selection and Ctrl/Cmd-click additive selection
+  - Right-click actions for duplicating or deleting the current selection
+  - Batch type changes for the current selection
+  - Batch moves from the current set to another set owned by the same teacher
+  - Transactional multi-question duplication
+  - Immediate single or multi-question deletion with a three-second undo action
   - Completion indicators and full-set completion checks
 - Editor notifications in the bottom-right corner dismiss automatically after three seconds
-- Completing the editor saves pending changes, validates every question, and moves to the first incomplete question when needed
+- Completing the editor saves pending changes and validates every question
+- When completion is blocked, an invalid-only review panel lists each affected question and its reasons, then links directly back to that question
 - Dashboard section routes for discover, favorites, history, homework, play, and settings currently exist as placeholders
 - Prisma schema includes Auth.js models plus initial Ploovo models:
   - `User`
@@ -91,10 +103,14 @@ Korean UI copy should sound natural, short, and written by a real person.
 - The current session does not expose the database user ID, so teacher ownership is resolved from `session.user.email`.
 - Question types are stored inside the existing JSON fields instead of adding a Prisma column:
   - `Question.choices` stores the visible choices.
-  - `Question.answer` stores `{ type, index }` or `{ type, text }`.
-  - Older answers containing only `{ index }` are treated as multiple choice for backward compatibility.
+  - Multiple-choice answers store `{ type, indices }`.
+  - True/false answers store `{ type, index }`.
+  - Short answers store `{ type, texts, match }`.
+  - Older answers containing `{ index }` or `{ text }` remain readable for backward compatibility.
 - Incomplete questions are allowed as server-side drafts so auto-save does not reject work in progress.
 - Question deletion is persisted immediately. Undo restores the same question ID and content, then reapplies ordering.
+- Batch type changes flush pending auto-saves first and reset incompatible answer data to the new type's defaults.
+- Batch moves are ownership-checked and transactional; moved questions are appended to the target set and the source set is reordered.
 - The first production target is a VPS.
 - The user is new to VPS deployment, so deployment instructions should stay explicit and beginner-friendly.
 
@@ -196,10 +212,10 @@ npm run build
 pm2 restart ploovo --update-env
 ```
 
-The current dashboard/editor commit expected on the VPS is:
+A previous dashboard/editor milestone is:
 
 ```txt
-8b38296 Build interactive quiz set editor
+a3c7a2b Expand quiz editor workspace
 ```
 
 ## Git And File Transfer Notes
@@ -248,6 +264,7 @@ Prefer Git for deployment updates once the repo is on GitHub.
 ## Recent Milestone Commits
 
 ```txt
+a3c7a2b Expand quiz editor workspace
 8b38296 Build interactive quiz set editor
 16ac598 Add question editing flow
 f42f619 Build usable teacher dashboard

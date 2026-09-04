@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { DashboardShell } from "../../DashboardShell";
 import { createQuizSet } from "../../actions";
 
 export default async function NewQuizSetPage({
@@ -16,22 +15,19 @@ export default async function NewQuizSetPage({
   }
 
   const { error } = await searchParams;
-  const displayName = session.user.name ?? session.user.email ?? "선생님";
-
   return (
-    <DashboardShell displayName={displayName} current="sets">
-      <section className="dashboard-content dashboard-form-content" aria-labelledby="new-set-title">
-        <div className="dashboard-title-row">
-          <div>
-            <p className="dashboard-kicker">CREATE SET</p>
-            <h1 id="new-set-title">새 문제 세트</h1>
-          </div>
-          <Link className="dashboard-title-action is-quiet" href="/dashboard">
-            돌아가기
-          </Link>
+    <section className="dashboard-content dashboard-form-content focus-page" aria-labelledby="new-set-title">
+      <div className="dashboard-title-row">
+        <div>
+          <p className="dashboard-kicker">CREATE SET</p>
+          <h1 id="new-set-title">새 문제 세트</h1>
         </div>
+        <Link className="dashboard-title-action is-quiet" href="/dashboard">
+          돌아가기
+        </Link>
+      </div>
 
-        <form className="set-form-card" action={createQuizSet}>
+      <form className="set-form-card" action={createQuizSet}>
           <label htmlFor="title">세트 이름</label>
           <input
             id="title"
@@ -52,8 +48,7 @@ export default async function NewQuizSetPage({
           />
 
           <button type="submit">세트 저장</button>
-        </form>
-      </section>
-    </DashboardShell>
+      </form>
+    </section>
   );
 }

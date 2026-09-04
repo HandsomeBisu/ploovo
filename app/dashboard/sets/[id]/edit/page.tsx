@@ -2,7 +2,6 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { parseQuestionRecord } from "@/lib/question-editor";
-import { DashboardShell } from "../../../DashboardShell";
 import { QuizSetEditor } from "./QuizSetEditor";
 
 export default async function EditQuizSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -30,16 +29,22 @@ export default async function EditQuizSetPage({ params }: { params: Promise<{ id
     notFound();
   }
 
-  const displayName = session.user.name ?? session.user.email ?? "선생님";
+  const otherSets = await prisma.quizSet.findMany({
+    where: {
+      id: { not: set.id },
+      owner: { email: session.user.email },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, title: true },
+  });
 
   return (
-    <DashboardShell displayName={displayName} current="sets" mode="editor">
-      <QuizSetEditor
-        description={set.description}
-        initialQuestions={set.questions.map(parseQuestionRecord)}
-        quizSetId={set.id}
-        title={set.title}
-      />
-    </DashboardShell>
+    <QuizSetEditor
+      availableSets={otherSets}
+      description={set.description}
+      initialQuestions={set.questions.map(parseQuestionRecord)}
+      quizSetId={set.id}
+      title={set.title}
+    />
   );
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { ClipboardEvent, DragEvent, KeyboardEvent } from "react";
+import type { ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
@@ -11,6 +11,7 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  ClipboardCheck,
   Circle,
   CircleDashed,
   Copy,
@@ -18,9 +19,11 @@ import {
   GripVertical,
   ListChecks,
   LoaderCircle,
+  MoveRight,
   Plus,
   RotateCcw,
   Save,
+  SlidersHorizontal,
   TextCursorInput,
   ToggleLeft,
   Trash2,
@@ -28,11 +31,13 @@ import {
   X,
 } from "lucide-react";
 import {
+  changeQuestionDraftTypes,
   createQuestionDraft,
-  deleteQuestionDraft,
-  duplicateQuestionDraft,
+  deleteQuestionDrafts,
+  duplicateQuestionDrafts,
+  moveQuestionDrafts,
   reorderQuestionDrafts,
-  restoreQuestionDraft,
+  restoreQuestionDrafts,
   saveQuestionDraft,
 } from "../../../actions";
 import {
@@ -45,6 +50,8 @@ import styles from "./QuizSetEditor.module.css";
 
 type SaveStatus = "saved" | "unsaved" | "saving" | "error";
 type MobileView = "list" | "edit" | "preview";
+type DeletedQuestion = { question: EditorQuestion; index: number };
+type ContextMenu = { x: number; y: number };
 
 const typeLabels: Record<QuestionType, string> = {
   "multiple-choice": "객관식",
@@ -53,11 +60,13 @@ const typeLabels: Record<QuestionType, string> = {
 };
 
 export function QuizSetEditor({
+  availableSets,
   description,
   initialQuestions,
   quizSetId,
   title,
 }: {
+  availableSets: Array<{ id: string; title: string }>;
   description: string | null;
   initialQuestions: EditorQuestion[];
   quizSetId: string;
@@ -66,6 +75,10 @@ export function QuizSetEditor({
   const router = useRouter();
   const [questions, setQuestions] = useState(initialQuestions);
   const [activeId, setActiveId] = useState(initialQuestions[0]?.id ?? null);
+  const [selectedIds, setSelectedIds] = useState(
+    () => new Set(initialQuestions[0] ? [initialQuestions[0].id] : []),
+  );
+  const [selectionAnchorId, setSelectionAnchorId] = useState(initialQuestions[0]?.id ?? null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -73,7 +86,12 @@ export function QuizSetEditor({
   const [mobileView, setMobileView] = useState<MobileView>("edit");
   const [showValidation, setShowValidation] = useState(false);
   const [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(null);
-  const [undoItem, setUndoItem] = useState<{ question: EditorQuestion; index: number } | null>(null);
+  const [undoItems, setUndoItems] = useState<DeletedQuestion[] | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkType, setBulkType] = useState<QuestionType>("multiple-choice");
+  const [targetSetId, setTargetSetId] = useState(availableSets[0]?.id ?? "");
+  const [reviewOpen, setReviewOpen] = useState(false);
   const saveTimers = useRef(new Map<string, number>());
   const saveVersions = useRef(new Map<string, number>());
   const dirtyIds = useRef(new Set<string>());
@@ -82,6 +100,13 @@ export function QuizSetEditor({
   const activeQuestion = questions.find((question) => question.id === activeId) ?? null;
   const completeCount = questions.filter(isQuestionComplete).length;
   const activeIssues = activeQuestion ? validateQuestion(activeQuestion) : [];
+  const reviewQuestions = useMemo(
+    () =>
+      questions
+        .map((question, index) => ({ question, index, issues: validateQuestion(question) }))
+        .filter((item) => item.issues.length > 0),
+    [questions],
+  );
 
   useEffect(() => {
     const timers = saveTimers.current;
@@ -92,17 +117,55 @@ export function QuizSetEditor({
   }, []);
 
   useEffect(() => {
-    if (!notice && !undoItem) {
+    if (!notice && !undoItems) {
       return;
     }
 
     const timer = window.setTimeout(() => {
       setNotice(null);
-      setUndoItem(null);
+      setUndoItems(null);
     }, 3000);
 
     return () => window.clearTimeout(timer);
-  }, [notice, undoItem]);
+  }, [notice, undoItems]);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    const closeMenu = () => setContextMenu(null);
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("pointerdown", closeMenu);
+    return () => {
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("pointerdown", closeMenu);
+    };
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (!reviewOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setReviewOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [reviewOpen]);
 
   useEffect(() => {
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
@@ -167,9 +230,46 @@ export function QuizSetEditor({
     scheduleSave(updated);
   }
 
-  function selectQuestion(id: string) {
-    setActiveId(id);
+  function selectQuestion(id: string, event?: ReactMouseEvent) {
+    const index = questions.findIndex((question) => question.id === id);
+    const anchorIndex = questions.findIndex((question) => question.id === selectionAnchorId);
+    let nextActiveId = id;
+
+    if (event?.shiftKey && anchorIndex >= 0 && index >= 0) {
+      const [start, end] = [anchorIndex, index].sort((a, b) => a - b);
+      setSelectedIds(new Set(questions.slice(start, end + 1).map((question) => question.id)));
+    } else if ((event?.ctrlKey || event?.metaKey) && selectedIds.has(id)) {
+      const next = new Set(selectedIds);
+      next.delete(id);
+      if (next.size > 0) {
+        setSelectedIds(next);
+        nextActiveId = [...next][0];
+      }
+      setSelectionAnchorId(id);
+    } else if (event?.ctrlKey || event?.metaKey) {
+      setSelectedIds(new Set([...selectedIds, id]));
+      setSelectionAnchorId(id);
+    } else {
+      setSelectedIds(new Set([id]));
+      setSelectionAnchorId(id);
+    }
+
+    setActiveId(nextActiveId);
     setMobileView("edit");
+    setContextMenu(null);
+  }
+
+  function openQuestionMenu(id: string, event: ReactMouseEvent<HTMLLIElement>) {
+    event.preventDefault();
+    setActiveId(id);
+    if (!selectedIds.has(id)) {
+      setSelectedIds(new Set([id]));
+      setSelectionAnchorId(id);
+    }
+    setContextMenu({
+      x: Math.min(event.clientX, window.innerWidth - 190),
+      y: Math.min(event.clientY, window.innerHeight - 112),
+    });
   }
 
   async function addQuestion(type: QuestionType = "multiple-choice") {
@@ -189,6 +289,8 @@ export function QuizSetEditor({
     const normalized = normalizeOrders(nextQuestions);
     setQuestions(normalized);
     setActiveId(result.question.id);
+    setSelectedIds(new Set([result.question.id]));
+    setSelectionAnchorId(result.question.id);
     setMobileView("edit");
     setShowValidation(false);
     if (insertIndex < questions.length) {
@@ -198,75 +300,172 @@ export function QuizSetEditor({
     setNotice({ message: "새 문제를 추가했어요." });
   }
 
-  async function duplicateActive() {
-    if (!activeQuestion) {
+  async function duplicateSelected() {
+    const selected = questions.filter((question) => selectedIds.has(question.id));
+    if (selected.length === 0) {
       return;
     }
 
     setBusyAction("duplicate");
-    const result = await duplicateQuestionDraft(quizSetId, activeQuestion.id);
+    setContextMenu(null);
+    const result = await duplicateQuestionDrafts(quizSetId, selected.map((question) => question.id));
 
-    if (!result.ok || !result.question) {
+    if (!result.ok || !result.questions) {
       setBusyAction(null);
       setNotice({ message: result.ok ? "문제를 복제하지 못했어요." : result.error, error: true });
       return;
     }
 
-    const activeIndex = questions.findIndex((question) => question.id === activeQuestion.id);
+    const lastSelectedIndex = Math.max(
+      ...selected.map((question) => questions.findIndex((item) => item.id === question.id)),
+    );
     const nextQuestions = [...questions];
-    nextQuestions.splice(activeIndex + 1, 0, result.question);
+    nextQuestions.splice(lastSelectedIndex + 1, 0, ...result.questions);
     const normalized = normalizeOrders(nextQuestions);
     setQuestions(normalized);
-    setActiveId(result.question.id);
+    setActiveId(result.questions[0].id);
+    setSelectedIds(new Set(result.questions.map((question) => question.id)));
+    setSelectionAnchorId(result.questions[0].id);
     await reorderQuestionDrafts(quizSetId, normalized.map((question) => question.id));
     setBusyAction(null);
-    setNotice({ message: "문제를 복제했어요." });
+    setNotice({ message: `${result.questions.length}개 문제를 복제했어요.` });
   }
 
-  async function deleteActive() {
-    if (!activeQuestion) {
+  async function savePendingQuestions(items: EditorQuestion[]) {
+    const pending = items.filter((question) => dirtyIds.current.has(question.id));
+    if (pending.length === 0) return true;
+
+    pending.forEach((question) => clearQuestionSave(question.id, false));
+    setSaveStatus("saving");
+    const results = await Promise.all(pending.map((question) => saveQuestionDraft(question)));
+
+    if (results.some((result) => !result.ok)) {
+      setSaveStatus("error");
+      setNotice({ message: "저장되지 않은 문제가 있어 작업을 중단했어요.", error: true });
+      return false;
+    }
+
+    pending.forEach((question) => dirtyIds.current.delete(question.id));
+    setSavedAt(new Date());
+    setSaveStatus(dirtyIds.current.size > 0 ? "unsaved" : "saved");
+    return true;
+  }
+
+  async function changeSelectedType() {
+    const selected = questions.filter((question) => selectedIds.has(question.id));
+    if (selected.length === 0 || !(await savePendingQuestions(selected))) return;
+
+    setBusyAction("bulk-type");
+    const result = await changeQuestionDraftTypes(
+      quizSetId,
+      selected.map((question) => question.id),
+      bulkType,
+    );
+    setBusyAction(null);
+
+    if (!result.ok || !result.questions) {
+      setNotice({ message: result.ok ? "문제 유형을 변경하지 못했어요." : result.error, error: true });
+      return;
+    }
+
+    const changedById = new Map(result.questions.map((question) => [question.id, question]));
+    setQuestions((current) => current.map((question) => changedById.get(question.id) ?? question));
+    setBulkOpen(false);
+    setShowValidation(false);
+    setNotice({ message: `${result.questions.length}개 문제를 ${typeLabels[bulkType]}으로 변경했어요.` });
+  }
+
+  async function moveSelectedQuestions() {
+    const selected = questions.filter((question) => selectedIds.has(question.id));
+    const targetSet = availableSets.find((set) => set.id === targetSetId);
+    if (selected.length === 0 || !targetSet || !(await savePendingQuestions(selected))) return;
+
+    setBusyAction("bulk-move");
+    const result = await moveQuestionDrafts(
+      quizSetId,
+      targetSet.id,
+      selected.map((question) => question.id),
+    );
+    setBusyAction(null);
+
+    if (!result.ok) {
+      setNotice({ message: result.error ?? "문제를 이동하지 못했어요.", error: true });
+      return;
+    }
+
+    const firstIndex = Math.min(
+      ...selected.map((question) => questions.findIndex((item) => item.id === question.id)),
+    );
+    const movedIds = new Set(selected.map((question) => question.id));
+    const remaining = normalizeOrders(questions.filter((question) => !movedIds.has(question.id)));
+    const nextActive = remaining[Math.min(firstIndex, remaining.length - 1)] ?? null;
+    setQuestions(remaining);
+    setActiveId(nextActive?.id ?? null);
+    setSelectedIds(new Set(nextActive ? [nextActive.id] : []));
+    setSelectionAnchorId(nextActive?.id ?? null);
+    setBulkOpen(false);
+    setNotice({ message: `${selected.length}개 문제를 '${targetSet.title}' 세트로 이동했어요.` });
+  }
+
+  async function deleteSelected() {
+    const deletedItems = questions
+      .map((question, index) => ({ question, index }))
+      .filter(({ question }) => selectedIds.has(question.id));
+    if (deletedItems.length === 0) {
       return;
     }
 
     setBusyAction("delete");
-    clearQuestionSave(activeQuestion.id);
-    const index = questions.findIndex((question) => question.id === activeQuestion.id);
-    const result = await deleteQuestionDraft(quizSetId, activeQuestion.id);
+    setContextMenu(null);
+    deletedItems.forEach(({ question }) => clearQuestionSave(question.id));
+    const result = await deleteQuestionDrafts(
+      quizSetId,
+      deletedItems.map(({ question }) => question.id),
+    );
     setBusyAction(null);
 
-    if (!result.ok || !result.question) {
-      scheduleSave(activeQuestion);
+    if (!result.ok || !result.questions) {
+      deletedItems.forEach(({ question }) => scheduleSave(question));
       setNotice({ message: result.ok ? "문제를 삭제하지 못했어요." : result.error, error: true });
       return;
     }
 
-    const remaining = normalizeOrders(questions.filter((question) => question.id !== activeQuestion.id));
+    const firstIndex = deletedItems[0].index;
+    const deletedIds = new Set(deletedItems.map(({ question }) => question.id));
+    const remaining = normalizeOrders(questions.filter((question) => !deletedIds.has(question.id)));
+    const nextActive = remaining[Math.min(firstIndex, remaining.length - 1)] ?? null;
     setQuestions(remaining);
-    setActiveId(remaining[Math.min(index, remaining.length - 1)]?.id ?? null);
-    setUndoItem({ question: result.question, index });
-    setNotice({ message: "문제를 삭제했어요." });
+    setActiveId(nextActive?.id ?? null);
+    setSelectedIds(new Set(nextActive ? [nextActive.id] : []));
+    setSelectionAnchorId(nextActive?.id ?? null);
+    setUndoItems(deletedItems);
+    setNotice({ message: `${deletedItems.length}개 문제를 삭제했어요.` });
   }
 
   async function undoDelete() {
-    if (!undoItem) {
+    if (!undoItems) {
       return;
     }
 
     setBusyAction("undo");
-    const result = await restoreQuestionDraft(undoItem.question);
+    const result = await restoreQuestionDrafts(undoItems.map(({ question }) => question));
 
-    if (!result.ok || !result.question) {
+    if (!result.ok || !result.questions) {
       setBusyAction(null);
       setNotice({ message: result.ok ? "문제를 복구하지 못했어요." : result.error, error: true });
       return;
     }
 
     const restored = [...questions];
-    restored.splice(undoItem.index, 0, result.question);
+    undoItems.forEach((item, index) => {
+      restored.splice(Math.min(item.index, restored.length), 0, result.questions![index]);
+    });
     const normalized = normalizeOrders(restored);
     setQuestions(normalized);
-    setActiveId(result.question.id);
-    setUndoItem(null);
+    setActiveId(result.questions[0].id);
+    setSelectedIds(new Set(result.questions.map((question) => question.id)));
+    setSelectionAnchorId(result.questions[0].id);
+    setUndoItems(null);
     await reorderQuestionDrafts(quizSetId, normalized.map((question) => question.id));
     setBusyAction(null);
     setNotice({ message: "문제를 다시 복구했어요." });
@@ -306,11 +505,9 @@ export function QuizSetEditor({
       return;
     }
 
-    const firstIncomplete = questions.find((question) => !isQuestionComplete(question));
-    if (firstIncomplete) {
-      setActiveId(firstIncomplete.id);
-      setMobileView("edit");
-      setNotice({ message: "입력이 필요한 첫 번째 문제로 이동했어요.", error: true });
+    if (reviewQuestions.length > 0) {
+      setReviewOpen(true);
+      setNotice({ message: `수정이 필요한 문제가 ${reviewQuestions.length}개 있어요.`, error: true });
       return;
     }
 
@@ -328,7 +525,8 @@ export function QuizSetEditor({
 
     dirtyIds.current.clear();
     setSaveStatus("saved");
-    router.push(`/dashboard/sets/${quizSetId}`);
+    setNotice({ message: "세트를 저장했어요." });
+    router.push(`/dashboard/sets/${quizSetId}?saved=1`);
   }
 
   function clearQuestionSave(questionId: string, clearDirty = true) {
@@ -405,11 +603,13 @@ export function QuizSetEditor({
             <ol className={styles.questionList}>
               {questions.map((question, index) => {
                 const complete = isQuestionComplete(question);
+                const selected = selectedIds.has(question.id);
                 return (
                   <li
-                    className={question.id === activeId ? styles.activeQuestion : undefined}
+                    className={`${question.id === activeId ? styles.activeQuestion : ""} ${selected ? styles.selectedQuestion : ""}`}
                     draggable
                     key={question.id}
+                    onContextMenu={(event) => openQuestionMenu(question.id, event)}
                     onDragEnd={() => setDraggedId(null)}
                     onDragOver={(event) => event.preventDefault()}
                     onDragStart={(event: DragEvent<HTMLLIElement>) => {
@@ -418,7 +618,7 @@ export function QuizSetEditor({
                     }}
                     onDrop={() => handleDrop(index)}
                   >
-                    <button className={styles.questionSelect} onClick={() => selectQuestion(question.id)} type="button">
+                    <button aria-pressed={selected} className={styles.questionSelect} onClick={(event) => selectQuestion(question.id, event)} type="button">
                       <GripVertical className={styles.dragHandle} aria-hidden="true" />
                       <span className={styles.questionNumber}>{index + 1}</span>
                       <span className={styles.questionSummary}>
@@ -475,19 +675,176 @@ export function QuizSetEditor({
 
       {activeQuestion ? (
         <div className={styles.editorFooter}>
-          <div>
-            <button disabled={busyAction === "duplicate"} onClick={() => void duplicateActive()} type="button"><Copy /> 문제 복제</button>
-            <button className={styles.deleteButton} disabled={busyAction === "delete"} onClick={() => void deleteActive()} type="button"><Trash2 /> 삭제</button>
+          <div className={styles.footerActions}>
+            <div className={styles.bulkAction}>
+              <button
+                aria-expanded={bulkOpen}
+                className={styles.bulkToggle}
+                disabled={selectedIds.size === 0}
+                onClick={() => {
+                  setBulkOpen((current) => !current);
+                  setContextMenu(null);
+                }}
+                type="button"
+              >
+                <SlidersHorizontal /> 일괄 작업 ({selectedIds.size})
+              </button>
+              {bulkOpen ? (
+                <div className={styles.bulkPanel}>
+                  <div className={styles.bulkPanelHeading}>
+                    <div>
+                      <strong>{selectedIds.size}개 문제 일괄 작업</strong>
+                      <span>선택한 문제에만 적용돼요.</span>
+                    </div>
+                    <button aria-label="일괄 작업 닫기" onClick={() => setBulkOpen(false)} type="button">
+                      <X />
+                    </button>
+                  </div>
+
+                  <div className={styles.bulkField}>
+                    <span>문제 유형 변경</span>
+                    <div className={styles.bulkControlRow}>
+                      <select
+                        aria-label="변경할 문제 유형"
+                        onChange={(event) => setBulkType(event.target.value as QuestionType)}
+                        value={bulkType}
+                      >
+                        <option value="multiple-choice">객관식</option>
+                        <option value="true-false">OX</option>
+                        <option value="short-answer">단답형</option>
+                      </select>
+                      <button
+                        disabled={busyAction !== null}
+                        onClick={() => void changeSelectedType()}
+                        type="button"
+                      >
+                        {busyAction === "bulk-type" ? <LoaderCircle className={styles.spin} /> : <Check />}
+                        적용
+                      </button>
+                    </div>
+                    <small>유형이 달라지면 기존 답안은 새 유형에 맞게 초기화돼요.</small>
+                  </div>
+
+                  <div className={styles.bulkField}>
+                    <span>다른 세트로 이동</span>
+                    {availableSets.length > 0 ? (
+                      <div className={styles.bulkControlRow}>
+                        <select
+                          aria-label="이동할 문제 세트"
+                          onChange={(event) => setTargetSetId(event.target.value)}
+                          value={targetSetId}
+                        >
+                          {availableSets.map((set) => (
+                            <option key={set.id} value={set.id}>{set.title}</option>
+                          ))}
+                        </select>
+                        <button
+                          disabled={busyAction !== null || !targetSetId}
+                          onClick={() => void moveSelectedQuestions()}
+                          type="button"
+                        >
+                          {busyAction === "bulk-move" ? <LoaderCircle className={styles.spin} /> : <MoveRight />}
+                          이동
+                        </button>
+                      </div>
+                    ) : (
+                      <p className={styles.bulkEmpty}>이동할 다른 세트가 없어요.</p>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <button disabled={busyAction === "duplicate"} onClick={() => void duplicateSelected()} type="button"><Copy /> 문제 복제 ({selectedIds.size})</button>
+            <button className={styles.deleteButton} disabled={busyAction === "delete"} onClick={() => void deleteSelected()} type="button"><Trash2 /> 삭제 ({selectedIds.size})</button>
           </div>
-          <span>문제 {questions.findIndex((question) => question.id === activeQuestion.id) + 1} / {questions.length}</span>
+          <span>{selectedIds.size > 1 ? `${selectedIds.size}개 선택` : `문제 ${questions.findIndex((question) => question.id === activeQuestion.id) + 1} / ${questions.length}`}</span>
         </div>
       ) : null}
 
-      {notice || undoItem ? (
+      {contextMenu ? (
+        <div
+          aria-label="선택한 문제 메뉴"
+          className={styles.contextMenu}
+          onPointerDown={(event) => event.stopPropagation()}
+          role="menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button disabled={busyAction === "duplicate"} onClick={() => void duplicateSelected()} role="menuitem" type="button">
+            <Copy /> 문제 복제 ({selectedIds.size})
+          </button>
+          <button className={styles.contextDelete} disabled={busyAction === "delete"} onClick={() => void deleteSelected()} role="menuitem" type="button">
+            <Trash2 /> 삭제 ({selectedIds.size})
+          </button>
+        </div>
+      ) : null}
+
+      {reviewOpen ? (
+        <div className={styles.reviewBackdrop} onMouseDown={() => setReviewOpen(false)}>
+          <section
+            aria-labelledby="review-panel-title"
+            aria-modal="true"
+            className={styles.reviewPanel}
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <header>
+              <span className={styles.reviewIcon}><ClipboardCheck /></span>
+              <div>
+                <h2 id="review-panel-title">완료 전 검토</h2>
+                <p>수정이 필요한 문제 {reviewQuestions.length}개를 찾았어요.</p>
+              </div>
+              <button aria-label="검토 패널 닫기" onClick={() => setReviewOpen(false)} type="button"><X /></button>
+            </header>
+
+            <div className={styles.reviewList}>
+              {reviewQuestions.map(({ index, issues, question }) => (
+                <button
+                  className={styles.reviewItem}
+                  key={question.id}
+                  onClick={() => {
+                    setReviewOpen(false);
+                    setShowValidation(true);
+                    selectQuestion(question.id);
+                    setMobileView("edit");
+                  }}
+                  type="button"
+                >
+                  <span className={styles.reviewNumber}>{index + 1}</span>
+                  <span className={styles.reviewCopy}>
+                    <strong>{question.prompt.trim() || "제목이 없는 문제"}</strong>
+                    {issues.map((issue) => <small key={issue.code}>{issue.message}</small>)}
+                  </span>
+                  <ChevronRight />
+                </button>
+              ))}
+            </div>
+
+            <footer>
+              <button onClick={() => setReviewOpen(false)} type="button">계속 편집</button>
+              <button
+                className={styles.reviewPrimary}
+                onClick={() => {
+                  const first = reviewQuestions[0];
+                  if (!first) return;
+                  setReviewOpen(false);
+                  setShowValidation(true);
+                  selectQuestion(first.question.id);
+                  setMobileView("edit");
+                }}
+                type="button"
+              >
+                첫 오류 수정 <ChevronRight />
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
+      {notice || undoItems ? (
         <div className={`${styles.toast} ${notice?.error ? styles.toastError : ""}`} role="status">
           {notice?.error ? <TriangleAlert /> : <CheckCircle2 />}
           <span>{notice?.message ?? "문제를 삭제했어요."}</span>
-          {undoItem ? (
+          {undoItems ? (
             <button disabled={busyAction === "undo"} onClick={() => void undoDelete()} type="button"><RotateCcw /> 실행 취소</button>
           ) : (
             <button aria-label="알림 닫기" onClick={() => setNotice(null)} type="button"><X /></button>
@@ -535,10 +892,10 @@ function QuestionForm({
     onChange((current) => {
       if (type === "multiple-choice") {
         const previous = current.type === "multiple-choice" ? current.choices : [];
-        return { ...current, type, choices: Array.from({ length: Math.max(4, previous.length) }, (_, index) => previous[index] ?? ""), answerIndex: 0 };
+        return { ...current, type, choices: Array.from({ length: Math.max(4, previous.length) }, (_, index) => previous[index] ?? ""), answerIndices: [0] };
       }
-      if (type === "true-false") return { ...current, type, choices: ["O", "X"], answerIndex: 0 };
-      return { ...current, type, choices: [], answerText: "", answerIndex: 0 };
+      if (type === "true-false") return { ...current, type, choices: ["O", "X"], answerIndices: [0] };
+      return { ...current, type, choices: [], answerTexts: [""], shortAnswerMatch: "exact" };
     });
   }
 
@@ -556,10 +913,10 @@ function QuestionForm({
     if (question.choices.length <= 2) return;
     onChange((current) => {
       const choices = current.choices.filter((_, choiceIndex) => choiceIndex !== index);
-      let answerIndex = current.answerIndex;
-      if (answerIndex === index) answerIndex = 0;
-      else if (answerIndex > index) answerIndex -= 1;
-      return { ...current, choices, answerIndex };
+      const answerIndices = current.answerIndices
+        .filter((answerIndex) => answerIndex !== index)
+        .map((answerIndex) => (answerIndex > index ? answerIndex - 1 : answerIndex));
+      return { ...current, choices, answerIndices };
     });
   }
 
@@ -569,10 +926,12 @@ function QuestionForm({
     onChange((current) => {
       const choices = [...current.choices];
       [choices[index], choices[target]] = [choices[target], choices[index]];
-      let answerIndex = current.answerIndex;
-      if (answerIndex === index) answerIndex = target;
-      else if (answerIndex === target) answerIndex = index;
-      return { ...current, choices, answerIndex };
+      const answerIndices = current.answerIndices.map((answerIndex) => {
+        if (answerIndex === index) return target;
+        if (answerIndex === target) return index;
+        return answerIndex;
+      });
+      return { ...current, choices, answerIndices };
     });
   }
 
@@ -595,6 +954,37 @@ function QuestionForm({
     else if (question.choices.length < 6) addChoice();
   }
 
+  function toggleCorrectChoice(index: number) {
+    onChange((current) => ({
+      ...current,
+      answerIndices: current.answerIndices.includes(index)
+        ? current.answerIndices.filter((answerIndex) => answerIndex !== index)
+        : [...current.answerIndices, index].sort((a, b) => a - b),
+    }));
+  }
+
+  function updateShortAnswer(index: number, value: string) {
+    onChange((current) => ({
+      ...current,
+      answerTexts: current.answerTexts.map((answer, answerIndex) =>
+        answerIndex === index ? value.slice(0, 120) : answer,
+      ),
+    }));
+  }
+
+  function addShortAnswer() {
+    if (question.answerTexts.length >= 5) return;
+    onChange((current) => ({ ...current, answerTexts: [...current.answerTexts, ""] }));
+  }
+
+  function removeShortAnswer(index: number) {
+    if (question.answerTexts.length <= 1) return;
+    onChange((current) => ({
+      ...current,
+      answerTexts: current.answerTexts.filter((_, answerIndex) => answerIndex !== index),
+    }));
+  }
+
   return (
     <div className={styles.questionForm}>
       <div className={styles.formTopline}>
@@ -614,11 +1004,11 @@ function QuestionForm({
 
       {question.type === "multiple-choice" ? (
         <fieldset className={styles.choiceEditor}>
-          <legend><span>보기</span><small>정답 왼쪽의 원을 눌러 지정하세요.</small></legend>
+          <legend><span>보기</span><small>정답은 여러 개 선택할 수 있어요.</small></legend>
           {question.choices.map((choice, index) => (
-            <div className={`${styles.choiceRow} ${question.answerIndex === index ? styles.correctChoice : ""}`} key={`${question.id}-choice-${index}`}>
-              <button aria-label={`${index + 1}번 보기를 정답으로 지정`} aria-pressed={question.answerIndex === index} className={styles.answerToggle} onClick={() => onChange((current) => ({ ...current, answerIndex: index }))} title="정답 지정" type="button">
-                {question.answerIndex === index ? <CheckCircle2 /> : <Circle />}<span>{String.fromCharCode(65 + index)}</span>
+            <div className={`${styles.choiceRow} ${question.answerIndices.includes(index) ? styles.correctChoice : ""}`} key={`${question.id}-choice-${index}`}>
+              <button aria-label={`${index + 1}번 보기를 정답으로 전환`} aria-pressed={question.answerIndices.includes(index)} className={styles.answerToggle} onClick={() => toggleCorrectChoice(index)} title="정답 전환" type="button">
+                {question.answerIndices.includes(index) ? <CheckCircle2 /> : <Circle />}<span>{String.fromCharCode(65 + index)}</span>
               </button>
               <input maxLength={120} onChange={(event) => updateChoice(index, event.target.value)} onKeyDown={(event) => handleChoiceKeyDown(index, event)} onPaste={(event) => handleChoicePaste(index, event)} placeholder={`${index + 1}번 보기`} ref={(element) => { choiceInputs.current[index] = element; }} value={choice} />
               <span className={styles.choiceCount}>{choice.length}/120</span>
@@ -638,19 +1028,33 @@ function QuestionForm({
         <fieldset className={styles.trueFalseEditor}>
           <legend>정답 선택</legend>
           {["O", "X"].map((label, index) => (
-            <button aria-pressed={question.answerIndex === index} key={label} onClick={() => onChange((current) => ({ ...current, answerIndex: index }))} type="button">
-              {question.answerIndex === index ? <CheckCircle2 /> : <Circle />}<strong>{label}</strong>
+            <button aria-pressed={question.answerIndices[0] === index} key={label} onClick={() => onChange((current) => ({ ...current, answerIndices: [index] }))} type="button">
+              {question.answerIndices[0] === index ? <CheckCircle2 /> : <Circle />}<strong>{label}</strong>
             </button>
           ))}
         </fieldset>
       ) : null}
 
       {question.type === "short-answer" ? (
-        <label className={styles.shortAnswerField}>
-          <span>정답</span>
-          <input maxLength={120} onChange={(event) => onChange((current) => ({ ...current, answerText: event.target.value.slice(0, 120) }))} placeholder="정답을 입력하세요." value={question.answerText} />
-          <small>{question.answerText.length}/120</small>
-        </label>
+        <fieldset className={styles.shortAnswerEditor}>
+          <legend>정답 판정</legend>
+          <div className={styles.matchSelector} role="group" aria-label="단답형 정답 판정 방식">
+            <button aria-pressed={question.shortAnswerMatch === "exact"} onClick={() => onChange((current) => ({ ...current, shortAnswerMatch: "exact" }))} type="button">완전히 일치</button>
+            <button aria-pressed={question.shortAnswerMatch === "contains"} onClick={() => onChange((current) => ({ ...current, shortAnswerMatch: "contains" }))} type="button">답에 포함</button>
+          </div>
+          <p>{question.shortAnswerMatch === "exact" ? "학생 답이 작성한 정답과 정확히 같아야 해요." : "학생 답에 작성한 정답이 들어 있으면 맞게 처리해요."}</p>
+          <div className={styles.shortAnswerList}>
+            {question.answerTexts.map((answer, index) => (
+              <div className={styles.shortAnswerRow} key={`${question.id}-answer-${index}`}>
+                <span>{index + 1}</span>
+                <input aria-label={`${index + 1}번 허용 정답`} maxLength={120} onChange={(event) => updateShortAnswer(index, event.target.value)} placeholder="허용할 정답을 입력하세요." value={answer} />
+                <small>{answer.length}/120</small>
+                <button aria-label={`${index + 1}번 정답 삭제`} disabled={question.answerTexts.length <= 1} onClick={() => removeShortAnswer(index)} title="정답 삭제" type="button"><X /></button>
+              </div>
+            ))}
+          </div>
+          <button className={styles.addChoice} disabled={question.answerTexts.length >= 5} onClick={addShortAnswer} type="button"><Plus /> 정답 추가 {question.answerTexts.length}/5</button>
+        </fieldset>
       ) : null}
 
       {visibleIssue ? (
@@ -674,15 +1078,18 @@ function QuestionPreview({ question }: { question: EditorQuestion | null }) {
       {question.type !== "short-answer" ? (
         <div className={styles.previewChoices}>
           {question.choices.map((choice, index) => (
-            <div className={question.answerIndex === index ? styles.previewCorrect : undefined} key={index}>
+            <div className={question.answerIndices.includes(index) ? styles.previewCorrect : undefined} key={index}>
               <span>{question.type === "true-false" ? choice : String.fromCharCode(65 + index)}</span>
               <strong>{choice || `${index + 1}번 보기`}</strong>
-              {question.answerIndex === index ? <Check /> : <ChevronRight />}
+              {question.answerIndices.includes(index) ? <Check /> : <ChevronRight />}
             </div>
           ))}
         </div>
       ) : (
-        <div className={styles.previewShortAnswer}><span>답을 입력하세요.</span><strong>{question.answerText ? `정답: ${question.answerText}` : "정답을 설정해 주세요."}</strong></div>
+        <div className={styles.previewShortAnswer}>
+          <span>답을 입력하세요.</span>
+          <strong>{question.answerTexts.some((answer) => answer.trim()) ? `정답 ${question.answerTexts.filter((answer) => answer.trim()).join(" · ")} · ${question.shortAnswerMatch === "exact" ? "일치" : "포함"}` : "정답을 설정해 주세요."}</strong>
+        </div>
       )}
     </div>
   );

@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
@@ -11,13 +14,11 @@ import {
   Heart,
   LogOut,
   Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   Settings,
   UsersRound,
 } from "lucide-react";
-import { signOut } from "@/auth";
+import { signOutAction } from "./actions";
 
 type DashboardSection =
   | "sets"
@@ -30,9 +31,7 @@ type DashboardSection =
 
 type DashboardShellProps = {
   children: ReactNode;
-  current: DashboardSection;
   displayName: string;
-  mode?: "default" | "editor";
 };
 
 const primaryNavItems = [
@@ -47,46 +46,24 @@ const manageNavItems = [
   { href: "/dashboard/favorites", label: "즐겨찾기", id: "favorites", icon: Heart },
 ] as const;
 
-async function signOutAction() {
-  "use server";
-
-  await signOut({ redirectTo: "/" });
-}
-
-export function DashboardShell({
-  children,
-  current,
-  displayName,
-  mode = "default",
-}: DashboardShellProps) {
+export function DashboardShell({ children, displayName }: DashboardShellProps) {
+  const pathname = usePathname();
   const shortName = displayName.length > 14 ? `${displayName.slice(0, 14)}...` : displayName;
   const initial = shortName.slice(0, 1).toUpperCase();
-  const isEditor = mode === "editor";
+  const focusMode =
+    pathname === "/dashboard/sets/new" || /^\/dashboard\/sets\/[^/]+\/edit$/.test(pathname);
+  const current = getCurrentSection(pathname);
 
   return (
-    <main className={`teacher-dashboard${isEditor ? " dashboard-editor-shell" : ""}`}>
-      <aside className="dashboard-sidebar" aria-label="선생님 메뉴">
-        {isEditor ? (
-          <input
-            aria-label="사이드바 접기 또는 펼치기"
-            className="sidebar-toggle-input"
-            id="editor-sidebar-toggle"
-            type="checkbox"
-          />
-        ) : null}
-
+    <main className={`teacher-dashboard${focusMode ? " dashboard-focus-shell" : ""}`}>
+      <aside
+        aria-hidden={focusMode || undefined}
+        aria-label="선생님 메뉴"
+        className="dashboard-sidebar"
+        inert={focusMode || undefined}
+      >
         <div className="dashboard-brand-row">
           <Brand />
-          {isEditor ? (
-            <label
-              className="sidebar-collapse-button"
-              htmlFor="editor-sidebar-toggle"
-              title="사이드바 접기 또는 펼치기"
-            >
-              <PanelLeftClose aria-hidden="true" className="sidebar-collapse-icon" />
-              <PanelLeftOpen aria-hidden="true" className="sidebar-expand-icon" />
-            </label>
-          ) : null}
         </div>
 
         <Link className="sidebar-create" href="/dashboard/sets/new" title="새 문제 세트">
@@ -127,6 +104,23 @@ export function DashboardShell({
       </div>
     </main>
   );
+}
+
+function getCurrentSection(pathname: string): DashboardSection {
+  const section = pathname.split("/")[2];
+
+  if (
+    section === "discover" ||
+    section === "favorites" ||
+    section === "history" ||
+    section === "homework" ||
+    section === "play" ||
+    section === "settings"
+  ) {
+    return section;
+  }
+
+  return "sets";
 }
 
 function Brand() {
