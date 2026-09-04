@@ -1,8 +1,10 @@
 .editorPage {
   display: flex;
   width: 100%;
-  min-height: calc(100vh - 36px);
+  height: calc(100dvh - 38px);
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   margin: 0 auto;
   color: #1d222b;
   animation: editorIn 300ms ease-out both;
@@ -40,6 +42,11 @@
 .backLink {
   width: 38px;
   height: 38px;
+}
+
+.backLink:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .backLink:hover,
@@ -164,7 +171,7 @@
 .editorWorkspace {
   display: grid;
   flex: 1;
-  min-height: 620px;
+  min-height: 0;
   grid-template-columns: 230px minmax(390px, 1fr) minmax(270px, 320px);
   margin-top: 18px;
   overflow: hidden;
@@ -182,8 +189,9 @@
 
 .questionRail {
   display: flex;
-  min-height: 620px;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   border-right: 1px solid #e3e7ed;
 }
 
@@ -224,10 +232,13 @@
 
 .questionList {
   display: grid;
+  flex: 1;
+  min-height: 0;
   align-content: start;
   gap: 6px;
   margin: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 10px;
   list-style: none;
 }
@@ -420,6 +431,9 @@
 
 .questionCanvas {
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: #ffffff;
 }
 
@@ -830,6 +844,9 @@
 }
 
 .previewPanel {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-left: 1px solid #e3e7ed;
 }
 
@@ -1219,6 +1236,14 @@
   animation: contextMenuIn 140ms ease-out both;
 }
 
+.contextMenu svg,
+.reviewBackdrop svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  stroke-width: 2.2;
+}
+
 .contextMenu button {
   display: flex;
   width: 100%;
@@ -1249,6 +1274,8 @@
   inset: 0;
   z-index: 90;
   display: grid;
+  width: 100vw;
+  min-height: 100dvh;
   place-items: center;
   background: rgb(22 28 37 / 44%);
   padding: 20px;
@@ -1323,6 +1350,8 @@
 
 .reviewList {
   display: grid;
+  flex: 1;
+  min-height: 0;
   gap: 7px;
   overflow-y: auto;
   padding: 12px 16px;
@@ -1416,6 +1445,127 @@
   color: #ffffff;
 }
 
+.leaveDialog {
+  display: flex;
+  width: min(440px, 100%);
+  max-height: calc(100dvh - 40px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #e2c7cd;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 64px rgb(17 25 38 / 24%);
+  animation: reviewPanelIn 180ms ease-out both;
+}
+
+.leaveDialog > header {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 32px;
+  gap: 11px;
+  align-items: center;
+  border-bottom: 1px solid #e9e1e3;
+  padding: 16px;
+}
+
+.leaveIcon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 8px;
+  background: #fff0f3;
+  color: #b32e4b;
+}
+
+.leaveIcon svg {
+  width: 19px;
+}
+
+.leaveDialog h2,
+.leaveDialog p {
+  margin: 0;
+}
+
+.leaveDialog h2 {
+  color: #252a32;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.leaveDialog header p {
+  margin-top: 3px;
+  color: #8a7480;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.leaveDialog header > button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: #f5f2f3;
+  color: #6e6267;
+  cursor: pointer;
+}
+
+.leaveDialogBody {
+  padding: 18px 16px;
+}
+
+.leaveDialogBody strong {
+  display: block;
+  color: #9f2943;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.5;
+}
+
+.leaveDialogBody p {
+  margin-top: 7px;
+  color: #707987;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.leaveDialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid #e9e1e3;
+  padding: 12px 16px;
+}
+
+.leaveDialog > footer button {
+  display: inline-flex;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #dce1e8;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #596473;
+  padding: 0 12px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.leaveDialog > footer button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.leaveDialog > footer .leaveDanger {
+  border-color: #b83250;
+  background: #b83250;
+  color: #ffffff;
+}
+
 .mobileTabs {
   display: none;
 }
@@ -1502,6 +1652,10 @@
 }
 
 @media (max-width: 820px) {
+  .editorPage {
+    height: calc(100dvh - 50px);
+  }
+
   .editorHeader {
     grid-template-columns: 36px minmax(0, 1fr) auto;
   }
@@ -1558,12 +1712,14 @@
 
   .editorWorkspace {
     display: block;
-    min-height: 580px;
+    min-height: 0;
     margin-top: 10px;
   }
 
   .editorWorkspace > * {
     display: none;
+    height: 100%;
+    min-height: 0;
   }
 
   .editorWorkspace[data-mobile-view="list"] .questionRail,
@@ -1578,7 +1734,7 @@
 
   .questionRail,
   .previewPanel {
-    min-height: 580px;
+    min-height: 0;
     border: 0;
   }
 
@@ -1686,7 +1842,7 @@
   }
 
   .reviewPanel {
-    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
   }
 
   .reviewPanel > header {
@@ -1709,6 +1865,7 @@
   .bulkPanel,
   .reviewBackdrop,
   .reviewPanel,
+  .leaveDialog,
   .toast,
   .spin {
     animation: none !important;

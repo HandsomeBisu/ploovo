@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowLeft,
@@ -92,10 +92,12 @@ export function QuizSetEditor({
   const [bulkType, setBulkType] = useState<QuestionType>("multiple-choice");
   const [targetSetId, setTargetSetId] = useState(availableSets[0]?.id ?? "");
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const saveTimers = useRef(new Map<string, number>());
   const saveVersions = useRef(new Map<string, number>());
   const dirtyIds = useRef(new Set<string>());
   const choiceInputs = useRef<Array<HTMLInputElement | null>>([]);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeQuestion = questions.find((question) => question.id === activeId) ?? null;
   const completeCount = questions.filter(isQuestionComplete).length;
@@ -134,30 +136,41 @@ export function QuizSetEditor({
       return;
     }
 
-    const closeMenu = () => setContextMenu(null);
+    const closeMenu = (event?: PointerEvent) => {
+      if (
+        event?.target instanceof Node &&
+        contextMenuRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setContextMenu(null);
+    };
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") closeMenu();
     };
-    window.addEventListener("resize", closeMenu);
-    window.addEventListener("scroll", closeMenu, true);
+    const closeOnViewportChange = () => setContextMenu(null);
+    window.addEventListener("resize", closeOnViewportChange);
+    window.addEventListener("scroll", closeOnViewportChange, true);
     window.addEventListener("keydown", closeOnEscape);
     document.addEventListener("pointerdown", closeMenu);
     return () => {
-      window.removeEventListener("resize", closeMenu);
-      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeOnViewportChange);
+      window.removeEventListener("scroll", closeOnViewportChange, true);
       window.removeEventListener("keydown", closeOnEscape);
       document.removeEventListener("pointerdown", closeMenu);
     };
   }, [contextMenu]);
 
   useEffect(() => {
-    if (!reviewOpen) {
+    if (!reviewOpen && !leaveConfirmOpen) {
       return;
     }
 
     const previousOverflow = document.body.style.overflow;
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setReviewOpen(false);
+      if (event.key !== "Escape") return;
+      setReviewOpen(false);
+      setLeaveConfirmOpen(false);
     };
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", closeOnEscape);
@@ -165,7 +178,7 @@ export function QuizSetEditor({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [reviewOpen]);
+  }, [leaveConfirmOpen, reviewOpen]);
 
   useEffect(() => {
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
@@ -261,14 +274,15 @@ export function QuizSetEditor({
 
   function openQuestionMenu(id: string, event: ReactMouseEvent<HTMLLIElement>) {
     event.preventDefault();
+    event.stopPropagation();
     setActiveId(id);
     if (!selectedIds.has(id)) {
       setSelectedIds(new Set([id]));
       setSelectionAnchorId(id);
     }
     setContextMenu({
-      x: Math.min(event.clientX, window.innerWidth - 190),
-      y: Math.min(event.clientY, window.innerHeight - 112),
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 188)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 110)),
     });
   }
 
@@ -302,7 +316,7 @@ export function QuizSetEditor({
 
   async function duplicateSelected() {
     const selected = questions.filter((question) => selectedIds.has(question.id));
-    if (selected.length === 0) {
+    if (selected.length === 0 || !(await savePendingQuestions(selected))) {
       return;
     }
 
@@ -529,6 +543,58 @@ export function QuizSetEditor({
     router.push(`/dashboard/sets/${quizSetId}?saved=1`);
   }
 
+  async function requestLeave() {
+    setContextMenu(null);
+    setBulkOpen(false);
+
+    if (reviewQuestions.length > 0) {
+      setLeaveConfirmOpen(true);
+      return;
+    }
+
+    setBusyAction("leave");
+    const saved = await savePendingQuestions(questions);
+    if (!saved) {
+      setBusyAction(null);
+      return;
+    }
+    router.push("/dashboard");
+  }
+
+  async function discardInvalidAndLeave() {
+    const invalidQuestions = reviewQuestions.map(({ question }) => question);
+    const invalidIds = new Set(invalidQuestions.map((question) => question.id));
+    const completeQuestions = questions.filter((question) => !invalidIds.has(question.id));
+    const dirtyInvalidQuestions = invalidQuestions.filter((question) =>
+      dirtyIds.current.has(question.id),
+    );
+
+    setBusyAction("leave");
+    invalidQuestions.forEach((question) => clearQuestionSave(question.id, false));
+
+    if (!(await savePendingQuestions(completeQuestions))) {
+      dirtyInvalidQuestions.forEach(scheduleSave);
+      setBusyAction(null);
+      return;
+    }
+
+    invalidQuestions.forEach((question) => clearQuestionSave(question.id));
+    const result = await deleteQuestionDrafts(
+      quizSetId,
+      invalidQuestions.map((question) => question.id),
+    );
+
+    if (!result.ok) {
+      dirtyInvalidQuestions.forEach(scheduleSave);
+      setBusyAction(null);
+      setNotice({ message: result.error, error: true });
+      return;
+    }
+
+    setLeaveConfirmOpen(false);
+    router.push("/dashboard");
+  }
+
   function clearQuestionSave(questionId: string, clearDirty = true) {
     const timer = saveTimers.current.get(questionId);
     if (timer) {
@@ -544,9 +610,15 @@ export function QuizSetEditor({
   return (
     <section className={styles.editorPage} aria-labelledby="quiz-editor-title">
       <header className={styles.editorHeader}>
-        <Link className={styles.backLink} href="/dashboard" aria-label="대시보드로 돌아가기">
-          <ArrowLeft aria-hidden="true" />
-        </Link>
+        <button
+          aria-label="대시보드로 돌아가기"
+          className={styles.backLink}
+          disabled={busyAction === "leave"}
+          onClick={() => void requestLeave()}
+          type="button"
+        >
+          {busyAction === "leave" ? <LoaderCircle className={styles.spin} /> : <ArrowLeft aria-hidden="true" />}
+        </button>
         <div className={styles.titleCopy}>
           <span>문제 세트 편집</span>
           <h1 id="quiz-editor-title">{title}</h1>
@@ -761,84 +833,130 @@ export function QuizSetEditor({
         </div>
       ) : null}
 
-      {contextMenu ? (
-        <div
-          aria-label="선택한 문제 메뉴"
-          className={styles.contextMenu}
-          onPointerDown={(event) => event.stopPropagation()}
-          role="menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          <button disabled={busyAction === "duplicate"} onClick={() => void duplicateSelected()} role="menuitem" type="button">
-            <Copy /> 문제 복제 ({selectedIds.size})
-          </button>
-          <button className={styles.contextDelete} disabled={busyAction === "delete"} onClick={() => void deleteSelected()} role="menuitem" type="button">
-            <Trash2 /> 삭제 ({selectedIds.size})
-          </button>
-        </div>
-      ) : null}
-
-      {reviewOpen ? (
-        <div className={styles.reviewBackdrop} onMouseDown={() => setReviewOpen(false)}>
-          <section
-            aria-labelledby="review-panel-title"
-            aria-modal="true"
-            className={styles.reviewPanel}
-            onMouseDown={(event) => event.stopPropagation()}
-            role="dialog"
-          >
-            <header>
-              <span className={styles.reviewIcon}><ClipboardCheck /></span>
-              <div>
-                <h2 id="review-panel-title">완료 전 검토</h2>
-                <p>수정이 필요한 문제 {reviewQuestions.length}개를 찾았어요.</p>
-              </div>
-              <button aria-label="검토 패널 닫기" onClick={() => setReviewOpen(false)} type="button"><X /></button>
-            </header>
-
-            <div className={styles.reviewList}>
-              {reviewQuestions.map(({ index, issues, question }) => (
-                <button
-                  className={styles.reviewItem}
-                  key={question.id}
-                  onClick={() => {
-                    setReviewOpen(false);
-                    setShowValidation(true);
-                    selectQuestion(question.id);
-                    setMobileView("edit");
-                  }}
-                  type="button"
-                >
-                  <span className={styles.reviewNumber}>{index + 1}</span>
-                  <span className={styles.reviewCopy}>
-                    <strong>{question.prompt.trim() || "제목이 없는 문제"}</strong>
-                    {issues.map((issue) => <small key={issue.code}>{issue.message}</small>)}
-                  </span>
-                  <ChevronRight />
-                </button>
-              ))}
-            </div>
-
-            <footer>
-              <button onClick={() => setReviewOpen(false)} type="button">계속 편집</button>
-              <button
-                className={styles.reviewPrimary}
-                onClick={() => {
-                  const first = reviewQuestions[0];
-                  if (!first) return;
-                  setReviewOpen(false);
-                  setShowValidation(true);
-                  selectQuestion(first.question.id);
-                  setMobileView("edit");
-                }}
-                type="button"
-              >
-                첫 오류 수정 <ChevronRight />
+      {contextMenu && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              aria-label="선택한 문제 메뉴"
+              className={styles.contextMenu}
+              ref={contextMenuRef}
+              role="menu"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <button disabled={busyAction === "duplicate"} onClick={() => void duplicateSelected()} role="menuitem" type="button">
+                <Copy /> 문제 복제 ({selectedIds.size})
               </button>
-            </footer>
-          </section>
-        </div>
-      ) : null}
+              <button className={styles.contextDelete} disabled={busyAction === "delete"} onClick={() => void deleteSelected()} role="menuitem" type="button">
+                <Trash2 /> 삭제 ({selectedIds.size})
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {reviewOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className={styles.reviewBackdrop} onMouseDown={() => setReviewOpen(false)}>
+              <section
+                aria-labelledby="review-panel-title"
+                aria-modal="true"
+                className={styles.reviewPanel}
+                onMouseDown={(event) => event.stopPropagation()}
+                role="dialog"
+              >
+                <header>
+                  <span className={styles.reviewIcon}><ClipboardCheck /></span>
+                  <div>
+                    <h2 id="review-panel-title">완료 전 검토</h2>
+                    <p>수정이 필요한 문제 {reviewQuestions.length}개를 찾았어요.</p>
+                  </div>
+                  <button aria-label="검토 패널 닫기" onClick={() => setReviewOpen(false)} type="button"><X /></button>
+                </header>
+
+                <div className={styles.reviewList}>
+                  {reviewQuestions.map(({ index, issues, question }) => (
+                    <button
+                      className={styles.reviewItem}
+                      key={question.id}
+                      onClick={() => {
+                        setReviewOpen(false);
+                        setShowValidation(true);
+                        selectQuestion(question.id);
+                        setMobileView("edit");
+                      }}
+                      type="button"
+                    >
+                      <span className={styles.reviewNumber}>{index + 1}</span>
+                      <span className={styles.reviewCopy}>
+                        <strong>{question.prompt.trim() || "제목이 없는 문제"}</strong>
+                        {issues.map((issue) => <small key={issue.code}>{issue.message}</small>)}
+                      </span>
+                      <ChevronRight />
+                    </button>
+                  ))}
+                </div>
+
+                <footer>
+                  <button onClick={() => setReviewOpen(false)} type="button">계속 편집</button>
+                  <button
+                    className={styles.reviewPrimary}
+                    onClick={() => {
+                      const first = reviewQuestions[0];
+                      if (!first) return;
+                      setReviewOpen(false);
+                      setShowValidation(true);
+                      selectQuestion(first.question.id);
+                      setMobileView("edit");
+                    }}
+                    type="button"
+                  >
+                    첫 오류 수정 <ChevronRight />
+                  </button>
+                </footer>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {leaveConfirmOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className={styles.reviewBackdrop} onMouseDown={() => setLeaveConfirmOpen(false)}>
+              <section
+                aria-labelledby="leave-dialog-title"
+                aria-modal="true"
+                className={styles.leaveDialog}
+                onMouseDown={(event) => event.stopPropagation()}
+                role="alertdialog"
+              >
+                <header>
+                  <span className={styles.leaveIcon}><TriangleAlert /></span>
+                  <div>
+                    <h2 id="leave-dialog-title">수정이 필요한 문제가 있어요</h2>
+                    <p>미완성 문제 {reviewQuestions.length}개가 남아 있어요.</p>
+                  </div>
+                  <button aria-label="나가기 경고 닫기" onClick={() => setLeaveConfirmOpen(false)} type="button"><X /></button>
+                </header>
+                <div className={styles.leaveDialogBody}>
+                  <strong>지금 나가면 수정이 필요한 문제는 모두 삭제돼요.</strong>
+                  <p>삭제한 문제는 복구할 수 없으며, 완성된 문제와 변경사항만 저장됩니다.</p>
+                </div>
+                <footer>
+                  <button disabled={busyAction === "leave"} onClick={() => setLeaveConfirmOpen(false)} type="button">계속 편집</button>
+                  <button
+                    className={styles.leaveDanger}
+                    disabled={busyAction === "leave"}
+                    onClick={() => void discardInvalidAndLeave()}
+                    type="button"
+                  >
+                    {busyAction === "leave" ? <LoaderCircle className={styles.spin} /> : <Trash2 />}
+                    삭제하고 나가기
+                  </button>
+                </footer>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {notice || undoItems ? (
         <div className={`${styles.toast} ${notice?.error ? styles.toastError : ""}`} role="status">

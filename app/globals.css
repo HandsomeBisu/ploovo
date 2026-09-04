@@ -3104,6 +3104,13 @@ input {
   padding: 46px 42px 72px;
 }
 
+.teacher-dashboard.dashboard-focus-shell,
+.dashboard-focus-shell .dashboard-main {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
 @media (min-width: 821px) {
   .teacher-dashboard.dashboard-focus-shell {
     grid-template-columns: 0 minmax(0, 1fr);

@@ -60,6 +60,7 @@ Korean UI copy should sound natural, short, and written by a real person.
   - Mobile tabs switch between list, editor, and preview views
 - Question drafts auto-save about 800 ms after the last change
 - The editor shows unsaved, saving, saved, and failed states and warns before leaving with unsaved work
+- The editor stays within the viewport; long question lists and editing content scroll inside their own panes
 - Supported question types:
   - Multiple choice
   - True/false (`O`/`X`)
@@ -81,6 +82,8 @@ Korean UI copy should sound natural, short, and written by a real person.
 - Editor notifications in the bottom-right corner dismiss automatically after three seconds
 - Completing the editor saves pending changes and validates every question
 - When completion is blocked, an invalid-only review panel lists each affected question and its reasons, then links directly back to that question
+- Review and warning dialogs render at the document level so their backdrop and positioning cover the full viewport
+- Leaving through the editor back button warns when invalid questions remain; confirming saves completed work and permanently removes invalid drafts
 - Dashboard section routes for discover, favorites, history, homework, play, and settings currently exist as placeholders
 - Prisma schema includes Auth.js models plus initial Ploovo models:
   - `User`
@@ -109,6 +112,7 @@ Korean UI copy should sound natural, short, and written by a real person.
   - Older answers containing `{ index }` or `{ text }` remain readable for backward compatibility.
 - Incomplete questions are allowed as server-side drafts so auto-save does not reject work in progress.
 - Question deletion is persisted immediately. Undo restores the same question ID and content, then reapplies ordering.
+- The editor back action treats invalid questions as disposable drafts only after an explicit destructive warning.
 - Batch type changes flush pending auto-saves first and reset incompatible answer data to the new type's defaults.
 - Batch moves are ownership-checked and transactional; moved questions are appended to the target set and the source set is reordered.
 - The first production target is a VPS.
