@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import {
+  isQuestionComplete,
   isQuestionType,
   parseQuestionRecord,
   type EditorQuestion,
@@ -81,6 +82,68 @@ export async function createQuizSet(formData: FormData) {
   });
 
   redirect(`/dashboard/sets/${quizSet.id}/edit`);
+}
+
+export async function updateQuizSetSettings(formData: FormData) {
+  const teacherId = await getTeacherId();
+  const quizSetId = getText(formData, "quizSetId");
+  const title = getText(formData, "title");
+  const description = getText(formData, "description");
+  const isPublic = formData.get("isPublic") === "on";
+
+  if (!quizSetId) {
+    redirect("/dashboard");
+  }
+
+  if (!title) {
+    redirect(`/dashboard/sets/${quizSetId}/settings?error=title`);
+  }
+
+  const quizSet = await prisma.quizSet.findFirst({
+    where: { id: quizSetId, ownerId: teacherId },
+    select: {
+      id: true,
+      questions: {
+        orderBy: { order: "asc" },
+        select: {
+          id: true,
+          quizSetId: true,
+          prompt: true,
+          choices: true,
+          answer: true,
+          order: true,
+        },
+      },
+    },
+  });
+
+  if (!quizSet) {
+    redirect("/dashboard");
+  }
+
+  if (
+    isPublic &&
+    (quizSet.questions.length === 0 ||
+      quizSet.questions.some((question) => !isQuestionComplete(parseQuestionRecord(question))))
+  ) {
+    redirect(`/dashboard/sets/${quizSetId}/settings?error=incomplete`);
+  }
+
+  await prisma.quizSet.update({
+    where: { id: quizSet.id },
+    data: {
+      title: title.slice(0, 80),
+      description: description ? description.slice(0, 180) : null,
+      isPublic,
+    },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/discover");
+  revalidatePath(`/dashboard/sets/${quizSet.id}`);
+  revalidatePath(`/dashboard/sets/${quizSet.id}/settings`);
+  revalidatePath(`/dashboard/discover/${quizSet.id}`);
+  redirect(`/dashboard/sets/${quizSet.id}/settings?saved=1`);
 }
 
 export async function createQuestion(formData: FormData) {

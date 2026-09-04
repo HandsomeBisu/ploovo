@@ -51,6 +51,16 @@ Korean UI copy should sound natural, short, and written by a real person.
   - Clicking a question title expands its choices or accepted short answers
   - Saving from the editor shows a three-second completion toast on the detail page
   - Quiz sets can be permanently deleted after typing the exact set name in a warning dialog
+- Quiz set settings are available at `/dashboard/sets/[id]/settings`
+  - Owners can change the set title and description
+  - Owners can switch a complete set between private and public visibility
+  - Incomplete or empty sets cannot be published
+  - The destructive deletion flow is available in a separate danger zone
+- Public discovery is implemented at `/dashboard/discover`
+  - Only public sets with at least one complete question are listed
+  - Teachers can search and sort public sets
+  - Public set details at `/dashboard/discover/[id]` are read-only
+  - Public sets expose only question review and live-start actions, never owner editing controls
 - The question editor is implemented as a focused three-pane workspace:
   - Full-width editing mode that fills the available viewport
   - No dashboard sidebar while creating or editing a set
@@ -84,7 +94,7 @@ Korean UI copy should sound natural, short, and written by a real person.
 - When completion is blocked, an invalid-only review panel lists each affected question and its reasons, then links directly back to that question
 - Review and warning dialogs render at the document level so their backdrop and positioning cover the full viewport
 - Leaving through the editor back button warns when invalid questions remain; confirming saves completed work and permanently removes invalid drafts
-- Dashboard section routes for discover, favorites, history, homework, play, and settings currently exist as placeholders
+- Dashboard section routes for favorites, history, homework, play, and settings currently exist as placeholders
 - Prisma schema includes Auth.js models plus initial Ploovo models:
   - `User`
   - `Account`
@@ -216,6 +226,13 @@ npm run build
 pm2 restart ploovo --update-env
 ```
 
+After pulling a change to `prisma/schema.prisma`, update the database before building. Until a production migration baseline is established, use:
+
+```bash
+npx prisma db push
+npm run db:generate
+```
+
 A previous dashboard/editor milestone is:
 
 ```txt
@@ -248,7 +265,7 @@ Prefer Git for deployment updates once the repo is on GitHub.
 - Dashboard live-play and assignment buttons currently lead to placeholder pages.
 - Discover, favorites, history, assignments, and settings do not yet have production behavior.
 - The game engine does not yet consume the three question-type JSON formats.
-- Quiz set title and description can be set during creation but cannot yet be edited afterward.
+- A production Prisma migration baseline is not established yet; schema changes currently require `prisma db push`.
 - Question media, explanations, bulk import, and question-bank reuse are not implemented.
 - Production login, database persistence, and the full editor CRUD flow still need end-to-end verification on the VPS.
 - `npm audit` reported a Prisma-related transitive dependency warning. Recheck dependency updates before production deployment.

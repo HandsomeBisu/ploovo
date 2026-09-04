@@ -30,6 +30,7 @@ export default async function DashboardPage() {
           id: true,
           title: true,
           description: true,
+          isPublic: true,
           updatedAt: true,
           _count: {
             select: { questions: true, gameRooms: true },
@@ -47,6 +48,7 @@ export default async function DashboardPage() {
     id: set.id,
     title: set.title,
     description: set.description,
+    isPublic: set.isPublic,
     updatedAt: set.updatedAt.toISOString(),
     updatedLabel: formatDate(set.updatedAt),
     questionCount: set._count.questions,

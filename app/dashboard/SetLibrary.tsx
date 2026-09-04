@@ -9,9 +9,12 @@ import {
   ClipboardList,
   FilePenLine,
   Gamepad2,
+  Globe2,
+  LockKeyhole,
   MoreHorizontal,
   Plus,
   Search,
+  Settings,
   X,
 } from "lucide-react";
 import { DeleteQuizSetDialog } from "./DeleteQuizSetDialog";
@@ -20,6 +23,7 @@ type DashboardSet = {
   id: string;
   title: string;
   description: string | null;
+  isPublic: boolean;
   updatedAt: string;
   updatedLabel: string;
   questionCount: number;
@@ -125,7 +129,13 @@ export function SetLibrary({ sets }: { sets: DashboardSet[] }) {
                       <BookOpenCheck />
                     </span>
                     <span className="set-list-copy">
-                      <strong>{set.title}</strong>
+                      <span className="set-title-line">
+                        <strong>{set.title}</strong>
+                        <small className={`set-visibility-inline ${set.isPublic ? "is-public" : ""}`}>
+                          {set.isPublic ? <Globe2 aria-hidden="true" /> : <LockKeyhole aria-hidden="true" />}
+                          {set.isPublic ? "공개" : "비공개"}
+                        </small>
+                      </span>
                       <small>{set.description || "설명이 아직 없어요."}</small>
                     </span>
                   </Link>
@@ -157,6 +167,10 @@ export function SetLibrary({ sets }: { sets: DashboardSet[] }) {
                         <Link href={`/dashboard/sets/${set.id}`}>
                           <BookOpenCheck aria-hidden="true" />
                           세트 정보
+                        </Link>
+                        <Link href={`/dashboard/sets/${set.id}/settings`}>
+                          <Settings aria-hidden="true" />
+                          세트 설정
                         </Link>
                         <DeleteQuizSetDialog
                           compact
